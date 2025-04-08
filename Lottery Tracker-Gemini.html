@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PAP'S HECKER PASS Daily Lottery Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        input, select, button {
+            padding: 5px;
+            margin: 2px;
+        }
+        #controls {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PAP'S HECKER PASS Daily Lottery Tracker</h1>
+    <div id="controls">
+        <div>
+            <label for="date">Date:</label>
+            <input type="date" id="date">
+        </div>
+        <div class="button-group">
+            <button onclick="addRow()">Add Row</button>
+            <button onclick="downloadCSV()">Export to Excel</button>
+            <button onclick="confirmDeleteAll()">Delete All Records</button>
+        </div>
+    </div>
+
+    <table id="trackerTable">
+        <thead>
+            <tr>
+                <th>Game #</th>
+                <th>Game Name</th>
+                <th>Price</th>
+                <th>Opening Ticket #</th>
+                <th>Closing Ticket #</th>
+                <th>Number of Tickets in Pack</th>
+                <th>Same Pack / New Pack Opened</th>
+                <th>Tickets Sold</th>
+                <th>Total Sales ($)</th>
+                <th>Delete</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        document.getElementById('date').valueAsDate = new Date();
+
+        function addRow(rowData = {}) {
+            const table = document.getElementById('trackerTable').getElementsByTagName('tbody')[0];
+            const row = table.insertRow();
+
+            const cell0 = row.insertCell();
+            const input0 = document.createElement('input');
+            input0.type = 'number';
+            input0.value = rowData.gameNumber || '';
+            input0.oninput = () => calculateTickets(row);
+            cell0.appendChild(input0);
+
+            const cell1 = row.insertCell();
+            const input1 = document.createElement('input');
+            input1.type = 'text';
+            input1.value = rowData.gameName || '';
+            input1.oninput = () => calculateTickets(row);
+            cell1.appendChild(input1);
+
+            const priceCell = row.insertCell();
+            const priceInput = document.createElement('input');
+            priceInput.type = 'number';
+            priceInput.value = rowData.price || '';
+            priceInput.oninput = () => calculateTickets(row);
+            priceCell.appendChild(priceInput);
+
+            const openingCell = row.insertCell();
+            const openingInput = document.createElement('input');
+            openingInput.type = 'number';
+            openingInput.value = rowData.opening || '';
+            openingInput.oninput = () => updatePackType(row);
+            openingCell.appendChild(openingInput);
+
+            const closingCell = row.insertCell();
+            const closingInput = document.createElement('input');
+            closingInput.type = 'number';
+            closingInput.value = rowData.closing || '';
+            closingInput.oninput = () => updatePackType(row);
+            closingCell.appendChild(closingInput);
+
+            const packSizeCell = row.insertCell();
+            const packSizeInput = document.createElement('input');
+            packSizeInput.type = 'number';
+            packSizeInput.value = rowData.packSize || '';
+            packSizeInput.oninput = () => calculateTickets(row);
+            packSizeCell.appendChild(packSizeInput);
+
+            const packTypeCell = row.insertCell();
+            const selectPack = document.createElement('select');
+            selectPack.id = `packType_${table.rows.length - 1}`; // Unique ID for each select
+            ['Same Pack', 'New Pack Opened'].forEach(text => {
+                const option = document.createElement('option');
+                option.text = text;
+                selectPack.add(option);
+            });
+            selectPack.value = rowData.packType || 'Same Pack';
+            selectPack.onchange = () => calculateTickets(row);
+            packTypeCell.appendChild(selectPack);
+
+            const soldCell = row.insertCell();
+            soldCell.textContent = rowData.sold || '0';
+            const salesCell = row.insertCell();
+            salesCell.textContent = rowData.sales || '0';
+
+            const deleteCell = row.insertCell();
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.onclick = () => {
+                row.remove();
+                saveData();
+            };
+            deleteCell.appendChild(deleteBtn);
+
+            calculateTickets(row);
+        }
+
+        function updatePackType(row) {
+            const openingVal = parseInt(row.cells[3].firstChild.value) || 0;
+            const closingVal = parseInt(row.cells[4].firstChild.value) || 0;
+            const packSelect = row.cells[6].firstChild;
+
+            if (closingVal - openingVal <= 0) {
+                packSelect.value = 'New Pack Opened';
+            } else {
+                packSelect.value = 'Same Pack';
+            }
+            calculateTickets(row);
+        }
+
+        function calculateTickets(row) {
+            const opening = parseInt(row.cells[3].firstChild.value) || 0;
+            const closing = parseInt(row.cells[4].firstChild.value) || 0;
+            const packSize = parseInt(row.cells[5].firstChild.value) || 0;
+            const price = parseFloat(row.cells[2].firstChild.value) || 0;
+            const packSelect = row.cells[6].firstChild;
+            const packType = packSelect.value;
+
+            let sold = 0;
+            if (packType === 'Same Pack') {
+                sold = closing - opening;
+            } else {
+                sold = (packSize - opening) + closing;
+            }
+            sold = sold >= 0 ? sold : 0;
+            const totalSales = sold * price;
+
+            row.cells[7].textContent = sold;
+            row.cells[8].textContent = totalSales.toFixed(2);
+
+            saveData();
+        }
+
+        function saveData() {
+            const date = document.getElementById('date').value;
+            const rows = Array.from(document.querySelectorAll('#trackerTable tbody tr')).map(row => {
+                const sold = parseInt(row.cells[7].textContent) || 0;
+                const sales = parseFloat(row.cells[8].textContent) || 0;
+                return {
+                    date,
+                    gameNumber: row.cells[0].firstChild.value,
+                    gameName: row.cells[1].firstChild.value,
+                    price: row.cells[2].firstChild.value,
+                    opening: row.cells[3].firstChild.value,
+                    closing: row.cells[4].firstChild.value,
+                    packSize: row.cells[5].firstChild.value,
+                    packType: row.cells[6].firstChild.value,
+                    sold: sold,
+                    sales: sales.toFixed(2)
+                };
+            });
+            localStorage.setItem('lotteryTrackerData', JSON.stringify(rows));
+        }
+
+        function loadData() {
+            const data = JSON.parse(localStorage.getItem('lotteryTrackerData') || '[]');
+            data.forEach(row => addRow(row));
+            if (data.length > 0) document.getElementById('date').value = data[0].date;
+        }
+
+        function downloadCSV() {
+            const rows = JSON.parse(localStorage.getItem('lotteryTrackerData') || '[]');
+            let csvContent = 'Date,Game #,Game Name,Price,Opening Ticket #,Closing Ticket #,Number of Tickets in Pack,Same Pack/New Pack,Tickets Sold,Total Sales ($)\n';
+
+            rows.forEach(row => {
+                csvContent += `${row.date},${row.gameNumber},${row.gameName},${row.price},${row.opening},${row.closing},${row.packSize},${row.packType},${row.sold},${row.sales}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const exportDate = new Date().toISOString().split('T')[0];
+            a.download = `${exportDate}_lottery_sales.csv`;
+            a.click();
+        }
+
+        function confirmDeleteAll() {
+            const downloadOption = confirm('Do you want to export the data before deleting? Click OK to export and delete, or Cancel to just delete.');
+            if (downloadOption) downloadCSV();
+            localStorage.removeItem('lotteryTrackerData');
+            document.querySelector('#trackerTable tbody').innerHTML = '';
+        }
+
+        window.onload = loadData;
+    </script>
+</body>
+</html>
